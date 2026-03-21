@@ -1,0 +1,17 @@
+name: ts_codegen
+version: 1.0.0
+description: Generates TypeScript from Dart json_serializable models
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  analyzer: ^12.0.0
+  build: ^4.0.5
+  source_gen: ^4.2.2
+  dart_style: ^3.1.8
+  glob: ^2.1.3
+
+dev_dependencies:
+  build_runner: ^2.4.9
+  lints: ^6.1.0

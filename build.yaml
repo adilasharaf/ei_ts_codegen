@@ -1,0 +1,21 @@
+builders:
+  ts_codegen:
+    import: "package:ts_codegen/builder.dart"
+    builder_factories: ["tsCodegenBuilder"]
+    build_extensions:
+      # Watches all .dart files, emits nothing per-file
+      # (we aggregate into a single output in post-process)
+      ".dart": []
+    auto_apply: dependents
+    build_to: source
+    runs_before:
+      - "json_serializable"
+
+post_process_builders:
+  ts_codegen_post:
+    import: "package:ts_codegen/builder.dart"
+    builder_factories: ["tsCodegenPostBuilder"]
+    input_extensions:
+      - ".dart"
+    applies_builders:
+      - "ts_codegen"
