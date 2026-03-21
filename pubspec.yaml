@@ -1,7 +1,10 @@
-name: ts_codegen
-version: 1.0.0
-description: Generates TypeScript from Dart json_serializable models
-
+name: ei_ts_codegen
+version: 1.0.1
+description: >
+  A build_runner builder that converts Dart json_serializable models and enums
+  into TypeScript classes with class-transformer, class-validator, and IST-aware
+  date/geo utilities.
+  
 environment:
   sdk: ">=3.0.0 <4.0.0"
 

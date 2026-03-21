@@ -1,21 +1,29 @@
 builders:
+  # ── Phase 1: per-file scan ─────────────────────────────────────────────
+  # Reads every .dart file and writes a sidecar .ts_meta.json next to it.
   ts_codegen:
-    import: "package:ts_codegen/builder.dart"
+    import: "package:ei_ts_codegen/builder.dart"
     builder_factories: ["tsCodegenBuilder"]
     build_extensions:
-      # Watches all .dart files, emits nothing per-file
-      # (we aggregate into a single output in post-process)
-      ".dart": []
+      ".dart": [".ts_meta.json"]
     auto_apply: dependents
-    build_to: source
+    build_to: cache          # keep sidecars out of source tree
     runs_before:
-      - "json_serializable"
+      - "source_gen|combining_builder"   # run before json_serializable merges
 
-post_process_builders:
-  ts_codegen_post:
-    import: "package:ts_codegen/builder.dart"
+  # ── Phase 2: aggregate ────────────────────────────────────────────────
+  # Collects all .ts_meta.json files and writes the final .ts outputs.
+  ts_codegen_aggregate:
+    import: "package:ei_ts_codegen/builder.dart"
     builder_factories: ["tsCodegenPostBuilder"]
-    input_extensions:
-      - ".dart"
-    applies_builders:
-      - "ts_codegen"
+    build_extensions:
+      # Package-level output — $package$ means "run once per package"
+      "$package$":
+        - "lib/ts_output/models.ts"
+        - "lib/ts_output/enums.ts"
+        - "lib/ts_output/utils.ts"
+        - "lib/ts_output/index.ts"
+    auto_apply: dependents
+    build_to: source         # write final .ts files into the source tree
+    required_inputs:
+      - ".ts_meta.json"
