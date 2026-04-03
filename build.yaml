@@ -1,29 +1,43 @@
 builders:
-  # ── Phase 1: per-file scan ─────────────────────────────────────────────
-  # Reads every .dart file and writes a sidecar .ts_meta.json next to it.
-  ts_codegen:
-    import: "package:ei_ts_codegen/builder.dart"
-    builder_factories: ["tsCodegenBuilder"]
+  dart_ts_generator:
+    import: "package:dart_ts_generator/builder.dart"
+    builder_factories: ["dartTsGeneratorBuilder"]
     build_extensions:
-      ".dart": [".ts_meta.json"]
+      ".dart": [".g.ts"]
     auto_apply: dependents
-    build_to: cache          # keep sidecars out of source tree
-    runs_before:
-      - "source_gen|combining_builder"   # run before json_serializable merges
+    build_to: source
+    defaults:
+      generate_for:
+        include:
+          - lib/models/**
+          - lib/src/models/**
 
-  # ── Phase 2: aggregate ────────────────────────────────────────────────
-  # Collects all .ts_meta.json files and writes the final .ts outputs.
-  ts_codegen_aggregate:
-    import: "package:ei_ts_codegen/builder.dart"
-    builder_factories: ["tsCodegenPostBuilder"]
+  dart_ts_file_builder:
+    import: "package:dart_ts_generator/builder.dart"
+    builder_factories: ["dartTsFileBuilder"]
     build_extensions:
-      # Package-level output — $package$ means "run once per package"
-      "$package$":
-        - "lib/ts_output/models.ts"
-        - "lib/ts_output/enums.ts"
-        - "lib/ts_output/utils.ts"
-        - "lib/ts_output/index.ts"
-    auto_apply: dependents
-    build_to: source         # write final .ts files into the source tree
-    required_inputs:
-      - ".ts_meta.json"
+      ".dart": [".g.ts"]
+    auto_apply: none
+    build_to: source
+
+  dart_ts_index_builder:
+    import: "package:dart_ts_generator/index_builder.dart"
+    builder_factories: ["tsIndexBuilder"]
+    build_extensions:
+      r"$lib$": ["generated/ts/index.ts"]
+    auto_apply: none
+    build_to: source
+    runs_before:
+      - dart_ts_generator:dart_ts_generator
+
+targets:
+  $default:
+    builders:
+      dart_ts_generator:dart_ts_generator:
+        enabled: true
+        options:
+          output_dir: "lib/generated/ts"
+          generate_index: true
+          zod_import: "zod"
+          firestore_transforms: true
+          null_safety: true

@@ -13,14 +13,14 @@ class DartTsGenerator extends Generator {
 
   DartTsGenerator(this.config);
 
-  final _jsonSerializableChecker = const TypeChecker.fromName(
+  final _jsonSerializableChecker = TypeChecker.typeNamedLiterally(
     'JsonSerializable',
-    packageName: 'json_annotation',
+    inPackage: 'json_annotation',
   );
 
-  final _tsGenerateChecker = const TypeChecker.fromName(
+  final _tsGenerateChecker = TypeChecker.typeNamedLiterally(
     'TsGenerate',
-    packageName: 'dart_ts_generator',
+    inPackage: 'dart_ts_generator',
   );
 
   @override
@@ -40,9 +40,9 @@ class DartTsGenerator extends Generator {
     if (allClasses.isEmpty) return null;
 
     // Build name sets for cross-referencing
-    final knownModelNames = allClasses.map((c) => c.name).toSet();
+    final knownModelNames = allClasses.map((c) => c.name!).toSet();
     final knownEnumNames =
-        allClasses.where((c) => c is EnumElement).map((c) => c.name).toSet();
+        allClasses.whereType<EnumElement>().map((c) => c.name!).toSet();
 
     final analyzer = ModelAnalyzer(
       knownModelNames: knownModelNames,
@@ -67,7 +67,7 @@ class DartTsGenerator extends Generator {
     if (classInfos.isEmpty) return null;
 
     // Build registry
-    final registry = {for (final c in classInfos) c.name: c};
+    final registry = {for (final c in classInfos) c.name!: c};
 
     // Generate Zod output
     final zodGen = ZodSchemaGenerator(
@@ -81,15 +81,13 @@ class DartTsGenerator extends Generator {
   List<InterfaceElement> _collectClasses(LibraryElement library) {
     final result = <InterfaceElement>[];
 
-    void addFromUnit(CompilationUnitElement unit) {
-      result.addAll(unit.enums);
-      result.addAll(unit.classes);
-      result.addAll(unit.mixins);
-    }
-
-    addFromUnit(library.definingCompilationUnit);
-    for (final part in library.parts) {
-      addFromUnit(part.compilationUnit);
+    // analyzer >=7.x: CompilationUnitElement is removed. Use
+    // library.topLevelElements which flattens all units (defining + parts)
+    // into a single iterable of top-level elements.
+    for (final element in library.children) {
+      if (element is EnumElement) result.add(element);
+      if (element is ClassElement) result.add(element);
+      if (element is MixinElement) result.add(element);
     }
 
     return result;
@@ -97,13 +95,13 @@ class DartTsGenerator extends Generator {
 
   bool _shouldGenerate(ClassElement cls) {
     // Always skip private classes
-    if (cls.name.startsWith('_')) return false;
+    if (cls.name!.startsWith('_')) return false;
 
     // Include if annotated with @JsonSerializable or @TsGenerate
     if (_jsonSerializableChecker.hasAnnotationOf(cls)) return true;
     if (_tsGenerateChecker.hasAnnotationOf(cls)) return true;
 
-    // Also include classes that extend a class we know about
+    // Also include classes that extend a known class
     final superName = cls.supertype?.element.name;
     if (superName != null &&
         superName != 'Object' &&

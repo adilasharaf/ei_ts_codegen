@@ -1,10 +1,41 @@
 import 'package:build/build.dart';
-import 'package:ei_ts_codegen/src/ts_builder.dart';
+import 'package:source_gen/source_gen.dart';
+import 'generator.dart';
 
-/// Phase 1 — per-file: emits a .ts_meta.json sidecar for each .dart file.
-Builder tsCodegenBuilder(BuilderOptions options) => TsCodegenBuilder(options);
+/// Builder factory called by build_runner.
+Builder dartTsGeneratorBuilder(BuilderOptions options) {
+  return SharedPartBuilder(
+    [DartTsGenerator(options.config)],
+    'dart_ts_generator',
+  );
+}
 
-/// Phase 2 — aggregate: reads all .ts_meta.json files and emits
-/// models.ts / enums.ts / utils.ts / index.ts.
-Builder tsCodegenPostBuilder(BuilderOptions options) =>
-    TsCodegenAggregateBuilder(options);
+/// Standalone file-per-file builder (alternative mode).
+Builder dartTsFileBuilder(BuilderOptions options) {
+  return _TsFileBuilder(options.config);
+}
+
+class _TsFileBuilder implements Builder {
+  final Map<String, dynamic> config;
+
+  _TsFileBuilder(this.config);
+
+  @override
+  Map<String, List<String>> get buildExtensions => {
+        '.dart': ['.g.ts'],
+      };
+
+  @override
+  Future<void> build(BuildStep buildStep) async {
+    final inputId = buildStep.inputId;
+    final library = await buildStep.inputLibrary;
+
+    final generator = DartTsGenerator(config);
+    final output = await generator.generateForLibrary(library, buildStep);
+
+    if (output == null || output.trim().isEmpty) return;
+
+    final outputId = inputId.changeExtension('.g.ts');
+    await buildStep.writeAsString(outputId, output);
+  }
+}

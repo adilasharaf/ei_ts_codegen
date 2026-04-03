@@ -39,7 +39,7 @@ class ZodSchemaGenerator {
         externalRefs.isNotEmpty) {
       buf.writeln(ImportHeaderGenerator.generate(
         currentFile: currentOutputFile!,
-        referencedTypes: externalRefs,
+        referencedTypes: externalRefs.toList(),
         registry: crossFileRegistry!,
         zodImport: config.zodImport,
       ));
@@ -77,11 +77,11 @@ class ZodSchemaGenerator {
       for (final field in cls.fields) {
         final typeName = field.dartTypeName;
         if (!localNames.contains(typeName)) {
-          if (field.isModel || field.isEnum) refs.add(typeName);
+          if (field.isModel || field.isEnum) refs.add(typeName!);
           // Also check list inner types
           for (final arg in field.typeArgs) {
             if (classRegistry.containsKey(arg) && !localNames.contains(arg)) {
-              refs.add(arg);
+              refs.add(arg!);
             }
           }
         }
@@ -212,7 +212,7 @@ export type ${info.name} = z.infer<typeof ${info.name}Schema>;
     } else if (field.isModel) {
       schema = '${field.dartTypeName}Schema';
     } else {
-      schema = _resolveScalarZod(field.dartTypeName);
+      schema = _resolveScalarZod(field.dartTypeName!);
     }
 
     if (field.isNullable) {
@@ -240,7 +240,7 @@ export type ${info.name} = z.infer<typeof ${info.name}Schema>;
       return 'z.array(${innerType}Schema)';
     }
 
-    final innerZod = _resolveScalarZod(innerType);
+    final innerZod = _resolveScalarZod(innerType!);
     return 'z.array($innerZod)';
   }
 
@@ -249,7 +249,7 @@ export type ${info.name} = z.infer<typeof ${info.name}Schema>;
     final valueType = field.typeArgs[1];
     final valueZod = classRegistry.containsKey(valueType)
         ? '${valueType}Schema'
-        : _resolveScalarZod(valueType);
+        : _resolveScalarZod(valueType!);
     return 'z.record($valueZod)';
   }
 
@@ -279,7 +279,7 @@ export type ${info.name} = z.infer<typeof ${info.name}Schema>;
 
     void visit(ClassInfo cls) {
       if (visited.contains(cls.name)) return;
-      visited.add(cls.name);
+      visited.add(cls.name!);
       if (cls.superclassName != null &&
           nameMap.containsKey(cls.superclassName)) {
         visit(nameMap[cls.superclassName]!);

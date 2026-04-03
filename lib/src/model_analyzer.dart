@@ -1,14 +1,15 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/constant/value.dart';
-import 'source_parser.dart';
+import 'package:dart_ts_generator/dart_ts_generator.dart';
 
 /// Represents a parsed Dart field ready for code generation.
 class FieldInfo {
   final String? dartName;
   final String tsName; // from @JsonKey(name:...)
-  final String dartTypeName;
-  final List<String> typeArgs;
+  final String? dartTypeName;
+  final List<String?> typeArgs;
   final bool isNullable;
   final bool isIgnored; // @TsIgnore or @JsonKey(ignore: true)
   final String? converterClass; // e.g. 'DateTimeNullableConverter'
@@ -23,7 +24,7 @@ class FieldInfo {
   const FieldInfo({
     this.dartName,
     required this.tsName,
-    required this.dartTypeName,
+    this.dartTypeName,
     required this.typeArgs,
     required this.isNullable,
     required this.isIgnored,
@@ -40,19 +41,19 @@ class FieldInfo {
 
 /// Represents a parsed Dart class (model or enum).
 class ClassInfo {
-  final String name;
+  final String? name;
   final String? superclassName; // direct parent (if not Object)
   final List<FieldInfo> fields;
   final bool isEnum;
-  final List<String> enumValues;
+  final List<String?> enumValues;
   final bool isAbstract;
 
   const ClassInfo({
-    required this.name,
+    this.name,
     this.superclassName,
     required this.fields,
     required this.isEnum,
-    required this.enumValues,
+    this.enumValues = const [],
     required this.isAbstract,
   });
 }
@@ -74,7 +75,7 @@ class ModelAnalyzer {
   });
 
   ClassInfo analyzeClass(ClassElement element) {
-    if (element.isEnum) {
+    if (element is EnumElement) {
       return _analyzeEnum(element);
     }
     return _analyzeModel(element);
@@ -99,7 +100,11 @@ class ModelAnalyzer {
     final fields = <FieldInfo>[];
 
     for (final field in element.fields) {
-      if (field.isStatic || field.isSynthetic) continue;
+      final getter = field.getter;
+
+      // Skip synthetic-like fields
+      if (getter == null || getter.isAbstract) continue;
+
       final info = _analyzeField(field);
       if (info != null) fields.add(info);
     }
@@ -133,20 +138,17 @@ class ModelAnalyzer {
     String? defaultValue;
     String? fromJson;
     String? toJson;
-    bool includeFromJson = true;
-    bool includeToJson = true;
 
     if (jsonKey != null) {
-      isIgnored = _getBoolField(jsonKey, 'ignore') ??
-          false ||
-              _getBoolField(jsonKey, 'includeFromJson') == false ||
-              _getBoolField(jsonKey, 'includeToJson') == false;
+      // In newer json_annotation, 'ignore' was split into includeFromJson /
+      // includeToJson. Support both the legacy 'ignore' field and the newer ones.
+      final legacyIgnore = _getBoolField(jsonKey, 'ignore') ?? false;
+      final includeFromJson = _getBoolField(jsonKey, 'includeFromJson') ?? true;
+      final includeToJson = _getBoolField(jsonKey, 'includeToJson') ?? true;
 
-      // Check includeFromJson: false means skip
-      includeFromJson = _getBoolField(jsonKey, 'includeFromJson') ?? true;
-      includeToJson = _getBoolField(jsonKey, 'includeToJson') ?? true;
-
-      if (!includeFromJson && !includeToJson) isIgnored = true;
+      if (legacyIgnore || (!includeFromJson && !includeToJson)) {
+        isIgnored = true;
+      }
 
       jsonName = _getStringField(jsonKey, 'name');
       defaultValue = _getDefaultValueLiteral(jsonKey);
@@ -184,14 +186,8 @@ class ModelAnalyzer {
   }
 
   _TypeInfo _parseType(DartType type) {
-    final isNullable = type.nullabilitySuffix.toString().contains('question');
-
-    if (type is ParameterizedType) {
-      final name = type.element?.name ?? 'dynamic';
-      final args =
-          type.typeArguments.map((a) => _parseType(a).typeName).toList();
-      return _TypeInfo(name, isNullable, args);
-    }
+    // analyzer >=6.x: nullabilitySuffix is a proper enum; compare directly.
+    final isNullable = type.nullabilitySuffix == NullabilitySuffix.question;
 
     if (type is InterfaceType) {
       final name = type.element.name;
@@ -200,23 +196,29 @@ class ModelAnalyzer {
       return _TypeInfo(name, isNullable, args);
     }
 
-    final name = type.element?.name ?? type.toString().replaceAll('?', '');
+    // Fallback for other types (TypeParameterType, FunctionType, etc.)
+    final name =
+        type.element?.name ?? type.getDisplayString().replaceAll('?', '');
     return _TypeInfo(name, isNullable, []);
   }
 
-  bool _isModelType(String typeName) {
+  bool _isModelType(String? typeName) {
     return knownModelNames.contains(typeName) &&
         !knownEnumNames.contains(typeName);
   }
 
   String? _detectConverter(FieldElement field) {
-    for (final metadata in field.metadata) {
+    // analyzer >=6.x: field.metadata is List<ElementAnnotation> directly.
+    for (final metadata in field.metadata.annotations) {
       final element = metadata.element;
       if (element == null) continue;
 
       String? className;
       if (element is ConstructorElement) {
-        className = element.enclosingElement.name;
+        // analyzer >=6.x: enclosingElement3 replaces enclosingElement for
+        // named-type lookups; falls back gracefully if not available.
+        className = (element.enclosingElement as InterfaceElement?)?.name ??
+            element.enclosingElement.name;
       } else if (element is PropertyAccessorElement) {
         className = element.returnType.element?.name;
       }
@@ -236,10 +238,13 @@ class ModelAnalyzer {
   }
 
   bool _hasAnnotation(FieldElement field, String annotationName) {
-    return field.metadata.any((m) {
+    // analyzer >=6.x: field.metadata is List<ElementAnnotation> directly.
+    return field.metadata.annotations.any((m) {
       final element = m.element;
       if (element is ConstructorElement) {
-        return element.enclosingElement.name == annotationName;
+        final enclosing = element.enclosingElement as InterfaceElement?;
+        return (enclosing?.name ?? element.enclosingElement.name) ==
+            annotationName;
       }
       if (element is PropertyAccessorElement) {
         return element.name == annotationName;
@@ -249,11 +254,12 @@ class ModelAnalyzer {
   }
 
   ElementAnnotation? _getAnnotation(FieldElement field, String name) {
-    for (final meta in field.metadata) {
+    for (final meta in field.metadata.annotations) {
       final element = meta.element;
       String? className;
       if (element is ConstructorElement) {
-        className = element.enclosingElement.name;
+        final enclosing = element.enclosingElement as InterfaceElement?;
+        className = enclosing?.name ?? element.enclosingElement.name;
       } else if (element is PropertyAccessorElement) {
         className = element.name;
       }
@@ -312,13 +318,10 @@ class ModelAnalyzer {
     if (mapVal != null && mapVal.isEmpty) return '{}';
 
     // Enum value: get the field name
-    final type = obj.type;
-    if (type != null) {
-      final typeName = type.element?.name ?? '';
-      final variable = obj.variable;
-      if (variable != null) {
-        return '"${variable.name}"';
-      }
+    final variable =
+        obj.variable; // analyzer >=6.x: variable2 replaces variable
+    if (variable != null) {
+      return '"${variable.name}"';
     }
     return null;
   }
@@ -342,7 +345,7 @@ class ModelAnalyzer {
 
       // Lazy-load defaults from source for this class
       if (!_constructorDefaultsCache.containsKey(cls.name)) {
-        _constructorDefaultsCache[cls.name] = _loadDefaultsForClass(cls);
+        _constructorDefaultsCache[cls.name!] = _loadDefaultsForClass(cls);
       }
 
       final defaults = _constructorDefaultsCache[cls.name]!;
@@ -357,36 +360,37 @@ class ModelAnalyzer {
 
   Map<String, String> _loadDefaultsForClass(ClassElement cls) {
     try {
-      final source = cls.source;
-      if (source == null) return {};
+      final fragment = cls.firstFragment;
+      final source = fragment.libraryFragment.source;
 
-      // Get the source text slice for this class
       final fullSource = source.contents.data;
-      final offset = cls.nameOffset;
-      final end = cls.nameOffset + cls.nameLength + 2000; // generous window
+
+      final offset = fragment.nameOffset ?? 0;
+      final nameLength = cls.name!.length;
+      final end = offset + nameLength + 2000;
+
       final classSlice = fullSource.substring(
         offset.clamp(0, fullSource.length),
         end.clamp(0, fullSource.length),
       );
 
-      // Merge constructor defaults and field initializer defaults
       final ctorDefaults = ConstructorDefaultExtractor.extract(classSlice);
       final fieldDefaults = FieldInitializerExtractor.extract(classSlice);
 
-      return {...fieldDefaults, ...ctorDefaults}; // ctor takes priority
+      return {...fieldDefaults, ...ctorDefaults};
     } catch (_) {
       return {};
     }
   }
 
-  String _camelToSnakeOrKeep(String name) =>
-      name; // json_serializable keeps camelCase by default
+  String _camelToSnakeOrKeep(String? name) =>
+      name ?? ''; // json_serializable keeps camelCase by default
 }
 
 class _TypeInfo {
-  final String typeName;
+  final String? typeName;
   final bool isNullable;
-  final List<String> typeArgs;
+  final List<String?> typeArgs;
 
   _TypeInfo(this.typeName, this.isNullable, this.typeArgs);
 }

@@ -1,4 +1,4 @@
-name: ei_ts_codegen
+name: dart_ts_generator
 version: 1.0.1
 description: >
   A build_runner builder that converts Dart json_serializable models and enums

@@ -1,0 +1,26 @@
+name: dart_ts_generator_example
+description: Example models for dart_ts_generator
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  cloud_firestore: ^4.17.0
+  json_annotation: ^4.9.0
+
+dev_dependencies:
+  build_runner: ^2.4.9
+  json_serializable: ^6.8.0
+  dart_ts_generator:
+    path: ../
+
+targets:
+  $default:
+    builders:
+      dart_ts_generator:dart_ts_generator:
+        enabled: true
+        options:
+          output_dir: "lib/generated/ts"
+          generate_index: true
+          zod_import: "zod"
+          firestore_transforms: true

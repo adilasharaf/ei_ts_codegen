@@ -81,12 +81,14 @@ class TypeMapping {
     if (converterClass != null) {
       schema = _resolveConverter(converterClass, typeArgs, isList);
     } else if (typeName == 'List' || typeName == 'Iterable') {
-      final inner =
-          typeArgs.isNotEmpty ? resolveZod(typeArgs[0]) : 'z.unknown()';
+      final inner = typeArgs.isNotEmpty
+          ? resolveZod(typeArgs[0])
+          : 'z.unknown()';
       schema = 'z.array($inner)';
     } else if (typeName == 'Map') {
-      final value =
-          typeArgs.length >= 2 ? resolveZod(typeArgs[1]) : 'z.unknown()';
+      final value = typeArgs.length >= 2
+          ? resolveZod(typeArgs[1])
+          : 'z.unknown()';
       schema = 'z.record($value)';
     } else if (primitiveZodMap.containsKey(typeName)) {
       schema = primitiveZodMap[typeName]!;
