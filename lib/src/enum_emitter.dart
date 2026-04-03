@@ -20,7 +20,8 @@ class EnumEmitter {
       final values = (enm['values'] as List).cast<String>();
       buf.writeln('export enum $name {');
       for (final v in values) {
-        buf.writeln("  $v = '$v',");
+        // Double quotes for string enum values.
+        buf.writeln('  $v = "$v",');
       }
       buf.writeln('}');
       buf.writeln();
